@@ -3,26 +3,24 @@ require 'logger'
 require 'sonos'
 require 'lifx'
 require 'matrix'
-
+require 'pp'
 
 SPEAKER = "Master Bedroom"
 LIFX_TAG = "Master Bedroom Pendant"
 LIFX_RETRIES = 3
 SUNRISE_SEQUENCE = [[200,1,0.0001,0],[200,1,0.1,600],[240,0.3,0.15,600],[50,0.5,1,600],[55,0.6,1,600]]
-SONOS_OFFSET = 2
 POLL_INTERVAL = 120
 
 logger = Logger.new(STDOUT)
 logger.level = Logger::DEBUG
 
-def alarm_light tag, start_time, duration, sequence, logger, client
+def alarm_light tag, start_time, duration, sequence, logger, lifx_client
   logger.debug "Thread started for tag: #{tag}, start_time #{start_time} for #{duration}s"
   now = Time.now
   sequence_duration = sequence.map {|x| x[3]}.inject{|sum,x| sum + x }
   logger.debug "Total sequence duration is #{sequence_duration}s"
-  logger.debug "Discovered LIFX clients: #{client.lights}"
-  sequence_duration += SONOS_OFFSET
-  
+  logger.debug "Discovered LIFX clients: #{lifx_client.lights}"
+
   time_til_alarm = start_time-now
   
   delay = (time_til_alarm < sequence_duration ) ? 0 : (start_time-now)-sequence_duration
@@ -36,15 +34,15 @@ def alarm_light tag, start_time, duration, sequence, logger, client
     logger.debug "Started processing sequence"
     logger.debug "Discovering LIFX clients"
     begin
-      logger.debug "Discovered LIFX clients: #{client.lights}"
+      logger.debug "Discovered LIFX clients: #{lifx_client.lights}"
       h,s,b,d = seq
       colour = LIFX::Color.hsb h,s,b
-      logger.debug "Discovered tags: #{client.tags}"
+      logger.debug "Discovered tags: #{lifx_client.tags}"
       logger.info "Transitioning tag: #{tag} to #{colour} over #{d}s"
-      client.lights.with_label(tag).set_power :on
-      client.lights.with_label(tag).set_color(colour, duration: d)
+      lifx_client.lights.with_label(tag).set_power :on
+      lifx_client.lights.with_label(tag).set_color(colour, duration: d)
       logger.debug "Flushing"
-      client.flush
+      lifx_client.flush
     rescue Exception => e
       logger.error "Failed with #{e}"
     end
@@ -58,13 +56,13 @@ def alarm_light tag, start_time, duration, sequence, logger, client
   
   # And turn off again
   logger.debug "Discovering LIFX clients"
-  client.lights.with_label(tag).set_power :off
+  lifx_client.lights.with_label(tag).set_power :off
   logger.debug "Thread completed for tag: #{tag}, start_time #{start_time} for #{duration}s"
 end
 
 alarm_threads = []
-client = LIFX::Client.lan
-client.discover
+lifx_client = LIFX::Client.lan
+lifx_client.discover
 
 loop do
   
@@ -74,7 +72,8 @@ loop do
     speaker = system.speakers.find { |v| v.name==SPEAKER }
 
     enabled_alarms = speaker.list_alarms.find_all { |k,v| v[:Enabled]=='1' }
-  rescue 
+
+  rescue
     logger.warn "Could not talk to SONOS. Retrying..."
     retry
   end
@@ -82,19 +81,45 @@ loop do
   alarms_defined = enabled_alarms.map do |alarm_id, alarm_data|
     start_time_hms = alarm_data[:StartLocalTime].split(':')
     now = Time.now
-    start_time = Time.local(
-      now.year, 
-      now.month, 
-      now.day, 
-      start_time_hms[0],
-      start_time_hms[1],
-      start_time_hms[2])
 
-    if start_time < now
-      start_time+=(60*60*24)
+    start_time = Time.local(
+        now.year,
+        now.month,
+        now.day,
+        start_time_hms[0],
+        start_time_hms[1],
+        start_time_hms[2])
+
+    recurrence = alarm_data[:Recurrence]
+
+    # recurrence can be "ONCE", "ON_X", "WEEKDAYS", "WEEKENDS" or "DAILY"
+    # ON_X represents the days as a code. ON_1 means Monday, ON_0 means Sunday, ON_015 means Sunday, Monday and Friday.
+    # For our purposes, we only care about the next alarm as we'll recalculate after the alarm has passed
+
+    # calculate how many days into the future the next alarm is, based upon the recurrence field
+    def days_ahead wday_codes
+      wday_today = Date.today.wday
+
+      wday_pos = 0
+      wday_pos += 1 while wday_codes[wday_pos].to_i < wday_today
+      next_day = wday_codes[ wday_pos + 1 % wday_codes.length ].to_i
+      days_ahead = (next_day < wday_today ? next_day + 7 : next_day) - wday_today + 1
     end
-    
+
+    case recurrence
+      when /^(ONCE|DAILY)$/
+        # if start_time is in the past then this must be referring to an event tomorrow
+        start_time+=(60*60*24) if start_time < now
+      when /^ON_([0-6]+)$/
+        start_time+=(60*60*24*days_ahead($1.chars))
+      when 'WEEKDAYS'
+        start_time+=(60*60*24*days_ahead([1,2,3,4,5]))
+      when 'WEEKENDS'
+        start_time+=(60*60*24*days_ahead([6,0]))
+    end
+
     duration_hms = alarm_data[:Duration].split(':')
+
     duration=(duration_hms[0].to_i*60*60)+
              (duration_hms[1].to_i*60)+
              (duration_hms[2].to_i)
@@ -131,7 +156,7 @@ loop do
 
   alarms_needed.map do |alarm|
     logger.info "Creating thread for Alarm: #{alarm[:start_time]}, duration: #{alarm[:duration]}s"
-    alarm_threads << { start_time: alarm[:start_time], duration: alarm[:duration], thread: Thread.new { alarm_light(LIFX_TAG, alarm[:start_time], alarm[:duration],SUNRISE_SEQUENCE,logger,client) }}
+    alarm_threads << { start_time: alarm[:start_time], duration: alarm[:duration], thread: Thread.new { alarm_light(LIFX_TAG, alarm[:start_time], alarm[:duration],SUNRISE_SEQUENCE,logger,lifx_client) }}
   end
   
   sleep POLL_INTERVAL
