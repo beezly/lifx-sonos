@@ -125,8 +125,6 @@ loop do
              (duration_hms[1].to_i*60)+
              (duration_hms[2].to_i)
 
-
-
     { start_time: start_time, duration: duration }
   end
 
