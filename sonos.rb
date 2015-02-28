@@ -3,7 +3,6 @@ require 'logger'
 require 'sonos'
 require 'lifx'
 require 'matrix'
-require 'pp'
 
 SPEAKER = "Master Bedroom"
 LIFX_TAG = "Master Bedroom Pendant"
@@ -71,8 +70,10 @@ loop do
     system = Sonos::System.new
     speaker = system.speakers.find { |v| v.name==SPEAKER }
 
+    logger.debug "Requesting alarms"
     enabled_alarms = speaker.list_alarms.find_all { |k,v| v[:Enabled]=='1' }
 
+    logger.debug "Found #{enabled_alarms.count} alarms"
   rescue
     logger.warn "Could not talk to SONOS. Retrying..."
     retry
@@ -96,12 +97,12 @@ loop do
     # ON_X represents the days as a code. ON_1 means Monday, ON_0 means Sunday, ON_015 means Sunday, Monday and Friday.
     # For our purposes, we only care about the next alarm as we'll recalculate after the alarm has passed
 
-    # calculate how many days into the future the next alarm is, based upon the recurrence field
+    # Calculate how many days into the future the next alarm is, based upon the recurrence field
     def days_ahead wday_codes
       wday_today = Date.today.wday
 
       wday_pos = 0
-      wday_pos += 1 while wday_codes[wday_pos].to_i < wday_today
+      wday_pos += 1 while wday_codes[wday_pos].to_i < wday_today and wday_pos < wday_codes.length
       next_day = wday_codes[ wday_pos + 1 % wday_codes.length ].to_i
       days_ahead = (next_day < wday_today ? next_day + 7 : next_day) - wday_today + 1
     end
@@ -123,6 +124,8 @@ loop do
     duration=(duration_hms[0].to_i*60*60)+
              (duration_hms[1].to_i*60)+
              (duration_hms[2].to_i)
+
+
 
     { start_time: start_time, duration: duration }
   end
