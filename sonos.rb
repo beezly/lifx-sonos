@@ -24,7 +24,7 @@ def alarm_light tag, start_time, duration, sequence, logger, lifx_client
   
   delay = (time_til_alarm < sequence_duration ) ? 0 : (start_time-now)-sequence_duration
   
-  logger.info "Waiting for #{delay}s"
+  logger.info "Thread #{Thread.current} Waiting for #{delay}s before starting up"
   sleep delay
   
   # We wait here until we're ready to wake up
@@ -45,12 +45,13 @@ def alarm_light tag, start_time, duration, sequence, logger, lifx_client
     rescue Exception => e
       logger.error "Failed with #{e}"
     end
+    logger.debug "Thread #{Thread.current} waiting for next step in sequence"
     sleep d if d > 0
   end
   
   # Wait and turn off after our duration
   
-  logger.info "Waiting for #{duration}s"
+  logger.info "Thread #{Thread.current} waiting for #{duration}s before turning off"
   sleep duration
   
   # And turn off again
