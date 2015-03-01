@@ -102,9 +102,15 @@ loop do
       wday_today = Date.today.wday
 
       wday_pos = 0
-      wday_pos += 1 while wday_codes[wday_pos].to_i < wday_today and wday_pos < wday_codes.length
-      next_day = wday_codes[ wday_pos + 1 % wday_codes.length ].to_i
-      days_ahead = (next_day < wday_today ? next_day + 7 : next_day) - wday_today + 1
+      while wday_codes[wday_pos].to_i != wday_today and wday_pos < wday_codes.length
+        wday_pos += 1
+      end
+      if wday_pos >= wday_codes.length
+        next_day = wday_codes[0].to_i
+      else
+        next_day = wday_codes[ wday_pos + 1 % wday_codes.length ].to_i
+      end
+      days_ahead = (next_day < wday_today ? next_day + 7 : next_day) - wday_today
     end
 
     case recurrence
