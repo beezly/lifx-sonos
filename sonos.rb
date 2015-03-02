@@ -99,7 +99,7 @@ loop do
     # For our purposes, we only care about the next alarm as we'll recalculate after the alarm has passed
 
     # Calculate how many days into the future the next alarm is, based upon the recurrence field
-    def days_ahead wday_codes
+    def days_ahead wday_codes, start_time
       wday_today = Date.today.wday
 
       wday_pos = 0
@@ -109,7 +109,7 @@ loop do
       if wday_pos >= wday_codes.length
         next_day = wday_codes[0].to_i
       else
-        next_day = wday_codes[ wday_pos + 1 % wday_codes.length ].to_i
+        next_day = wday_codes[ wday_pos + ((start_time < Time.now) ? 1 : 0) % wday_codes.length ].to_i
       end
       days_ahead = (next_day < wday_today ? next_day + 7 : next_day) - wday_today
     end
