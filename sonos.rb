@@ -119,11 +119,11 @@ loop do
         # if start_time is in the past then this must be referring to an event tomorrow
         start_time+=(60*60*24) if start_time < now
       when /^ON_([0-6]+)$/
-        start_time+=(60*60*24*days_ahead($1.chars))
+        start_time+=(60*60*24*days_ahead($1.chars,start_time))
       when 'WEEKDAYS'
-        start_time+=(60*60*24*days_ahead([1,2,3,4,5]))
+        start_time+=(60*60*24*days_ahead([1,2,3,4,5],start_time))
       when 'WEEKENDS'
-        start_time+=(60*60*24*days_ahead([6,0]))
+        start_time+=(60*60*24*days_ahead([6,0],start_time))
     end
 
     duration_hms = alarm_data[:Duration].split(':')
